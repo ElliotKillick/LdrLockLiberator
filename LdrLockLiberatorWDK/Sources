@@ -1,0 +1,46 @@
+TARGETNAME=LdrLockLiberatorWDK
+# EXE = PROGRAM
+# DLL = DYNLINK
+TARGETTYPE=DYNLINK
+
+TARGETLIBS=$(SDK_LIB_PATH)\kernel32.lib \
+           $(SDK_LIB_PATH)\shell32.lib
+           # Linking with shell32.lib implicitly links in many other libraries, remove it for a more minimal process runtime
+           # We only need it for ShellExecute
+
+# Recommended warning level (highest before /Wall)
+MSC_WARNING_LEVEL=/W4
+
+# Disable error on warning (enabled by default)
+# According to "makefile.new" (a file I found by grepping WDK for the "WX" string), defining "BUILD_ALLOW_ALL_WARNINGS" should do this for both build stages but for some reason it doesn't work)
+COMPILER_WX_SWITCH=
+LINKER_WX_SWITCH=
+
+C_DEFINES=/DUNICODE /D_UNICODE
+
+# Use cdecl instead of stdcall by default (as done by modern versions of Visual Studio)
+# MSC_STDCALL or cpu_STDCALL should do this for all architectures but for some reason it doesn't work
+386_STDCALL=0
+amd64_STDCALL=0
+
+# Compiler (cl.exe) flags
+# Disable pointless "unreferenced formal parameter" /w4 warning
+USER_C_FLAGS=/wd4100
+# Linker (link.exe) flags
+LINKER_FLAGS=
+
+# EXE
+UMTYPE=windows
+UMENTRY=wwinmain
+
+# DLL
+DLLENTRY=DllMain
+# Specify exports with __declspec(dllexport) instead of in a .def file
+DLLDEF=
+
+# The original C:\Windows\System32\msvcrt.dll
+USE_MSVCRT=1
+
+# The C standard that comes with this WDK version is very old: C89 (very broken in terms of compliance)
+# For further development, I recommned switching to C++ (change this to a .cpp/.cc file)
+SOURCES=LdrLockLiberator.c
