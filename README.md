@@ -22,7 +22,7 @@ The techniques are intended to be **universal, clean, and 100% safe** where poss
 
 It's exactly what it sounds like. Unlock Loader Lock, set loader events, and flip `LdrpWorkInProgress`. It's recommended to keep `RUN_PAYLOAD_DIRECTLY_FROM_DLLMAIN` undefined for the best stability.
 
-**DO NOT USE THIS TECHNIQUE IN PROUDCTION CODE.** This was created as a byproduct of my shear curiosity and will to leave no stone unturned. Anything you do with this code is on you.
+**DO NOT USE THIS TECHNIQUE IN PROUDCTION CODE.** This was created as a byproduct of my sheer curiosity and will to leave no stone unturned. Anything you do with this code is on you.
 
 ### Escaping at the Exit
 
