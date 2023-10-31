@@ -311,7 +311,7 @@ VOID LdrFullUnlock(VOID) {
     // The problem arises due to ntdll!TppWorkerThread threads by default (https://devblogs.microsoft.com/oldnewthing/20191115-00/?p=103102)
     InterlockedAdd64(LdrpWorkInProgress, 1);
     // Reset these events to how they were to be safe (although it doesn't appear to be necessary at least in our case)
-    //modifyLdrEvents(FALSE, events, eventsCount);
+    modifyLdrEvents(FALSE, events, eventsCount);
     // Reacquire loader lock to be safe (although it doesn't appear to be necessary at least in our case)
     // Don't use the ntdll!LdrLockLoaderLock function to do this because it has the side effect of increasing ntdll!LdrpLoaderLockAcquisitionCount which we probably don't want
     EnterCriticalSection(LdrpLoaderLock);
