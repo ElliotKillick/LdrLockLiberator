@@ -36,7 +36,7 @@ Coming soon!
 
 The provided samples hijack `MpClient.dll` from `C:\Program Files\Windows Defender\Offline\OfflineScannerShell.exe`. Instructions are provided in the source code comments to easily adapt this for any other DLL and program pairing (primarily just updating the exports for static loads)!
 
-As a proof of concept, we run `ShellExecute` as the default payload. You can make this anything you want!
+As a proof of concept, we run `ShellExecute` as the default payload. However, you can make this do anything you want!
 
 ## Compilation
 
@@ -51,7 +51,7 @@ The `LdrLockLiberator.c` at the root of this project has been tested to compile 
 1. Go to the [WDK download page](https://learn.microsoft.com/en-us/windows-hardware/drivers/other-wdk-downloads#step-2-install-the-wdk)
 2. Click on the Windows 7 [WDK 7.1.0](https://www.microsoft.com/en-us/download/confirmation.aspx?id=11800) link to start download the correct WDK version
   - This is the last WDK that **officially** supports linking to the original MSVCRT (`C:\Windows\System32\msvcrt.dll`)
-  - SHA-256 sum: `5edc723b50ea28a070cad361dd0927df402b7a861a036bbcf11d27ebba77657d`
+  - SHA-256 checksum: `5edc723b50ea28a070cad361dd0927df402b7a861a036bbcf11d27ebba77657d`
 3. Mount the downloaded ISO then run `KitSetup.exe`
 4. Click through the installation process using the default options
 
