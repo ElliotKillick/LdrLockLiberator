@@ -26,7 +26,7 @@ It's exactly what it sounds like. Unlock Loader Lock, set loader events, and fli
 
 ### Escaping at the Exit
 
-We use the CRT `atexit` typically used by EXEs in our DLL code to escape Loader Lock when the program exits. For dynamic loads, this is made <b>100% safe</b> by pinning (`LDR_ADDREF_DLL_PIN`) our library using `LdrAddRefDll` so a following `FreeLibrary` won't remove our DLL from memory.
+We use the CRT `atexit` typically used by EXEs in our DLL code to escape Loader Lock when the program exits. For dynamic loads (using LoadLibrary), this is made <b>100% safe</b> by pinning (`LDR_ADDREF_DLL_PIN`) our library using `LdrAddRefDll` so a following `FreeLibrary` won't remove our DLL from memory.
 
 ### Using Locks to Our Advantage
 

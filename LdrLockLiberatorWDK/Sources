@@ -43,4 +43,4 @@ USE_MSVCRT=1
 
 # The C standard that comes with this WDK version is very old: C89 (very broken in terms of compliance)
 # For further development, I recommned switching to C++ (change this to a .cpp/.cc file)
-SOURCES=LdrLockLiberator.c
+SOURCES=LdrLockLiberatorWDK.c
