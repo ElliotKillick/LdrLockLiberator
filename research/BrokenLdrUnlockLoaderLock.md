@@ -1,6 +1,6 @@
 # Broken LdrUnlockLoaderLock
 
-This is the analysis and following proofs that a developer at Microsoft intentionally broke the LdrUnlockLoaderLock NTDLL export.
+This is the analysis and following proofs showing that a developer at Microsoft intentionally broke the `LdrUnlockLoaderLock` NTDLL export.
 
 ## Analysis
 
@@ -70,7 +70,7 @@ This is because it's one less than:
 ```
 
 Shifting the max cookie value we can provide to the right 0x30 gives us a `Cookie` value of:
-  - In Python: hex(0x0fffffffffffffff >> 0x30)
+  - In Python: `hex(0x0fffffffffffffff >> 0x30)`
 
 ```
 0xfff
