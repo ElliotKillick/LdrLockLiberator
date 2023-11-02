@@ -11,7 +11,7 @@ mov     rax, 1000000000000000h
 
 ; If Cookie >= 0x1000000000000000 (that's 16 hex digits) then error
 ; jae = Jump if greater than or equal to
-cmp     rdx, rax
+cmp     rdx, rax                                         ; Cookie is this function's second argument so it's stored in RDX
 jae     ntdll!LdrUnlockLoaderLock+0x49370 (7ff94e0d7330) ; Jump to error-handling code
 
 mov     rax, qword ptr gs:[30h]                          ; Get Thread Environment Block (TEB) address
@@ -31,7 +31,7 @@ test    rdx, 0FFFh
 jne     ntdll!LdrUnlockLoaderLock+0x49370 (7ff94e0d7330) ; Jump to error-handling code
 ```
 
-Based on this analysis, it's impossible to provide a 4 hex digit thread ID as the `LdrUnlockLoaderLock` `Cookie` because the `cmp` check will error if the value we send in is 16 hex digits. However, the `Cookie` needs that many hex digits so the `shr` keeps at least 4 hex digits for the following XOR condtion against the thread ID. To pass the XOR condition, we need our 4 digit thread ID to be `xor`'d by another 4 hex digit value which could only then possibly be equal to `0x0fff`.
+Based on this analysis, it's impossible to provide a 4 hex digit or greater thread ID as the `LdrUnlockLoaderLock` `Cookie` because the `cmp` check will error if the value we send in is 16 hex digits. However, the `Cookie` needs that many hex digits so the `shr` keeps at least 4 hex digits for the following XOR condtion against the thread ID. To pass the XOR condition, we need our 4 digit thread ID to be `xor`'d by another 4 hex digit value which could only then possibly be equal to `0x0fff`.
 
 ## Python Bruteforcer Proof
 
@@ -76,4 +76,4 @@ Shifting the max cookie value we can provide to the right 0x30 gives us a `Cooki
 0xfff
 ```
 
-There you have it, our `Cookie` only has 3 controllable hex digits. Therefore, it's impossible to pass the XOR check that proceeds for a 4 hex digit thread ID.
+There you have it, our `Cookie` only has 3 controllable hex digits. Therefore, it's impossible to pass the XOR check that proceeds for a 4 hex digit or greater thread ID.

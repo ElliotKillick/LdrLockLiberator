@@ -331,7 +331,7 @@ VOID MsvcrtAtexitHandler(VOID) {
     typedef void(__cdecl* msvcrtUnlockType)(int);
     msvcrtUnlockType msvcrtUnlock = (msvcrtUnlockType)(msvcrtUnlockAddress);
     // The original MSVCRT has locking (a critical section) around the CRT exit
-    // ShellExecute (a very complex function) calls atexit causing us to hang unless we call msvcrt!unlockexit before calling ShellExecute
+    // ShellExecute (a very complex function) calls atexit on a NEW THREAD causing us to hang unless we call msvcrt!unlockexit before calling ShellExecute
     // msvcrt!unlockexit isn't exported by msvcrt.dll (can't GetProcAddress it) but msvcrt!unlock is so we can effectively do the same thing by passing in 8 as its argument
     //
     // Disassembly of msvcrt!unlockexit from WinDbg:
@@ -355,7 +355,10 @@ VOID MsvcrtAtexitHandler(VOID) {
     // Luckily, MSVCRT is smart enough to run any remaining atexit handlers (that haven't already been run) then exit without any problems
     // Also, if more atexit handlers are created while we're in this atexit handler then they will also correctly run once before exit (all in the expected order too)
     // I just wanted to reinforce that this is 100% safe!
-    // UCRT does this differently with a ucrtbase!environ_table lock around adding to the atexit table and using a separate lock for CRT exit
+    //
+    // UCRT does this differently with separate locks around adding to the atexit table and around using CRT exit
+    // In UCRT, both of these locks are stored in this table: ucrtbase!environ_table+<SOME_OFFSET>
+    // This table directly contains several critical section objects
     msvcrtUnlock(8);
 
     payload();
@@ -365,6 +368,15 @@ VOID MsvcrtAtexitHandler(VOID) {
     // This only seems to happen with MSVCRT, other CRTs seem to automatically wait for ShellExecute to finish before doing CRT exit and terminating the program
     // For creating new threads yourself, use WaitForSingleObject like normal to make sure you wait until the thread exits before allowing the program to exit
     Sleep(3000);
+
+    // It's necessary to re-lock msvcrt!CrtLock_Exit because there could, however unlikely, be ANOTHER THREAD doing CRT exit at the exact same time as we're leaving this atexit handler
+    // This could, for example, lead to a race condition that causes some atexit handlers proceeding us to be executed twice
+    // MSVCRT's logic for walking thorugh the list of atexit handlers isn't atomic and msvcrt!CrtLock_Exit of course won't be re-locked for us by MSVCRT so we need to do it ourselves
+    // By locking, we're permitting a potential other thread to continue doing CRT exit (running any remaining atexit handlers) and ultimately terminate the process on our behalf
+    FARPROC msvcrtLockAddress = GetProcAddress(msvcrtHandle, "_lock");
+    typedef void(__cdecl* msvcrtLockType)(int);
+    msvcrtLockType msvcrtLock = (msvcrtLockType)(msvcrtLockAddress);
+    msvcrtLock(8);
 }
 #endif
 
