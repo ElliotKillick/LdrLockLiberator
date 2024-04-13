@@ -59,7 +59,7 @@ VOID payload(VOID) {
 // These functions are exported from ntdll.dll but do not exist in the header files so we need to prototype and import them
 // The functions could also be located at runtime with GetProcAddress
 // Function signatures are sourced from ReactOS: https://doxygen.reactos.org
-EXTERN_C NTSTATUS NTAPI LdrUnlockLoaderLock(_In_ ULONG Flags, _In_opt_ ULONG Cookie);
+EXTERN_C NTSTATUS NTAPI LdrUnlockLoaderLock(_In_ ULONG Flags, _In_opt_ ULONG_PTR Cookie);
 EXTERN_C NTSTATUS NTAPI LdrLockLoaderLock(_In_ ULONG Flags, _Out_opt_ PULONG Disposition, _Out_opt_ PULONG_PTR Cookie);
 EXTERN_C NTSYSAPI void DECLSPEC_NORETURN WINAPI RtlExitUserProcess(NTSTATUS Status);
 EXTERN_C NTSTATUS NTAPI LdrAddRefDll(IN ULONG Flags, IN PVOID BaseAddress);
