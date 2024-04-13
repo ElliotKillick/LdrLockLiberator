@@ -12,9 +12,11 @@
     For when <b>DLLMain</b> is the only way
 </p>
 
-LdrLockLiberator is a collection of techniques for escaping or otherwise forgoing Loader Lock while executing your code from `DllMain` or anywhere else the lock may be present. It was released in conjuction with the ["Perfect DLL Hijacking"](https://elliotonsecurity.com/perfect-dll-hijacking) article. We give you the <b>key</b> to unlock the library loader and do what you want with your loader (on your own computer)!
+LdrLockLiberator is a collection of techniques for escaping or otherwise forgoing Loader Lock while executing your code from `DllMain` or anywhere else the lock may be present. It was released in conjunction with the ["Perfect DLL Hijacking"](https://elliotonsecurity.com/perfect-dll-hijacking) article. We give you the <b>key</b> to unlock the library loader and do what you want with your loader (on your own computer)!
 
-The techniques are intended to be **universal, clean, and 100% safe** where possible. They're designed to work without modifying memory protection or pointers. This is important for staying compatible with modern exploit mitigations.
+The techniques are intended to be **universal, clean, and 100% safe** where possible. They're designed to work without modifying memory protection or pointers. This is important for staying compatible with modern exploit mitigations. The only officially supported architecture is x86-64 (32-bits is largely extinct).
+
+Want to learn the architectural reasons as to why `DllMain` is so troublesome on Windows whereas Unix-like operating systems don't struggle here? [Please, be my guest!](https://github.com/ElliotKillick/windows-vs-linux-loader-architecture#concurrency-experiments-conclusion).
 
 ## Techniques
 
@@ -44,6 +46,8 @@ As a proof of concept, we run `ShellExecute` as the default payload. However, yo
 
 The `LdrLockLiberator.c` at the root of this project has been tested to compile on Visual Studio 2022.
 
+Link to NTDLL by navigating from `Project > Properties`, go to `Linker > Input` then append to `Additional Dependencies`: `ntdll.lib`. Configure this for `All Configurations` and `All Platforms`.
+
 ### WDK
 
 #### Installing the Correct WDK
@@ -63,7 +67,7 @@ The `LdrLockLiberator.c` at the root of this project has been tested to compile 
 
 Done! Your DLL is built and ready for use!
 
-As an alternative to WDK, cross-compiling with MinGW would also probably work.
+As an alternative to WDK, compiling with MinGW would also probably work.
 
 ## License
 
