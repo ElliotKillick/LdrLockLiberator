@@ -46,7 +46,7 @@ EXTERN_C API VOID MpRemapCallistoDetections(VOID) EMPTY_IMPL;
 // Otherwise, ShellExecute goes directly to spawning the combase!CRpcThreadCache::RpcWorkerThreadEntry thread (among others)
 // See this occur as ShellExecute spawns threads in WinDbg: bp ntdll!LdrInitializeThunk
 // Investigating SHELL32.dll, this happens because SHELL32!CShellExecute::ExecuteNormal calls SHELL32!CShellExecute::_RunThreadMaybeWait (calc) instead of SHELL32!CShellExecute::_DoExecute (calc.exe) depending on the return value of CShellExecute::_ShouldCreateBackgroundThread
-// This fact matters for our debugging as it relates to the article because, in the second case (calc.exe), we don't get past the initial combase!CComApartment::StartServer -- (other functions) --> NdrCallClient2 deadlocked call stack unless we, as well as unlocking loader lock, also set loader events and set ntdll!LdrpWorkInProgess to zero at the same time
+// This fact matters for our debugging because, in the second case (calc.exe), we don't get past the initial combase!CComApartment::StartServer -- (other functions) --> NdrCallClient2 deadlocked call stack unless we, as well as unlocking loader lock, also set the LdrpLoadCompleteEvent loader event, and set ntdll!LdrpWorkInProgess to zero
 // Why? This requires investigating the target process of this NdrClientCall2 RPC call. Guess: csrss.exe (https://en.wikipedia.org/wiki/Client/Server_Runtime_Subsystem)
 
 VOID payload(VOID) {
