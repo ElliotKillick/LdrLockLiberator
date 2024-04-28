@@ -16,7 +16,7 @@ LdrLockLiberator is a collection of techniques for escaping or otherwise forgoin
 
 The techniques are intended to be **universal, clean, and 100% safe** where possible. They're designed to work without modifying memory protection or pointers. This is important for staying compatible with modern exploit mitigations. The only officially supported architecture is x86-64 (32-bits is largely extinct).
 
-Want to learn the architectural reasons as to why `DllMain` is so troublesome on Windows whereas Unix-like operating systems don't struggle here? [Please, be my guest!](https://github.com/ElliotKillick/windows-vs-linux-loader-architecture#concurrency-experiments-conclusion).
+Want to learn the architectural reasons as to why `DllMain` is so troublesome on Windows whereas Unix-like operating systems don't struggle here? [Please, be my guest!](https://github.com/ElliotKillick/windows-vs-linux-loader-architecture#the-root-of-dllmain-problems).
 
 ## Techniques
 
