@@ -1,3 +1,6 @@
+// Copyright (C) 2023 Elliot Killick <contact@elliotkillick.com>
+// Licensed under the MIT License. See LICENSE file for details.
+
 // WIN32_LEAN_AND_MEAN has already been defined (don't redefine to avoid warning)
 #include <Windows.h>
 #include <shellapi.h>
@@ -52,15 +55,19 @@ EXTERN_C __declspec(dllimport) int __cdecl atexit(void (__cdecl*)(void));
 //EXTERN_C __declspec(dllimport) int __cdecl _onexit(void (__cdecl*)(void));
 
 VOID payload(VOID) {
+    ShellExecute(NULL, L"open", L"calc", NULL, NULL, SW_SHOW);
+
+    // Ensure program doesn't terminate before ShellExecute completes (see main project C file for further explanation and the correct way way of doing this)
+    Sleep(3000);
+}
+
+VOID atexitHandler(VOID) {
     // Unlock CRT critical section: msvcrt!CrtLock_Exit
     // This is necessary because ShellExecute calls atexit on a NEW THREAD
     // Doing this is 100% safe (see main project C file for details)
     _unlock(8);
 
-    ShellExecute(NULL, L"open", L"calc.exe", NULL, NULL, SW_SHOW);
-
-    // Ensure program doesn't terminate before ShellExecute completes (see main project C file for further explanation and the correct way way of doing this)
-    Sleep(3000);
+    payload();
 
     // This is necessary to be 100% safe (see main project C file for details)
     _lock(8);

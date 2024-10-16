@@ -46,7 +46,7 @@ As a proof of concept, we run `ShellExecute` as the default payload. However, yo
 
 The `LdrLockLiberator.c` at the root of this project has been tested to compile on Visual Studio 2022.
 
-Link to NTDLL by navigating from `Project > Properties`, go to `Linker > Input` then append to `Additional Dependencies`: `ntdll.lib`. Configure this for `All Configurations` and `All Platforms`.
+Link to NTDLL by selecting the current Visual Studio project in the Solution Explorer window, then navigating to `Project > Properties` in the menu bar. From the drop-down `Configuration` menus at the top, select `All Configurations` and `All Platforms`. Now, go to `Linker > Input` then append to `Additional Dependencies`: `ntdll.lib`.
 
 ### WDK
 
@@ -54,7 +54,7 @@ Link to NTDLL by navigating from `Project > Properties`, go to `Linker > Input` 
 
 1. Go to the [WDK download page](https://learn.microsoft.com/en-us/windows-hardware/drivers/other-wdk-downloads#step-2-install-the-wdk)
 2. Click on the Windows 7 [WDK 7.1.0](https://www.microsoft.com/en-us/download/confirmation.aspx?id=11800) link to start download the correct WDK version
-  - This is the last WDK that **officially** supports linking to the original MSVCRT (`C:\Windows\System32\msvcrt.dll`)
+  - This is the last public WDK that **officially** supports linking to the original MSVCRT (`C:\Windows\System32\msvcrt.dll`)
   - SHA-256 checksum: `5edc723b50ea28a070cad361dd0927df402b7a861a036bbcf11d27ebba77657d`
 3. Mount the downloaded ISO then run `KitSetup.exe`
 4. Click through the installation process using the default options
@@ -71,4 +71,4 @@ As an alternative to WDK, compiling with MinGW would also probably work.
 
 ## License
 
-MIT License - Copyright (C) 2023 Elliot Killick <contact@elliotkillick.com>
+MIT License - Copyright (C) 2023-2024 Elliot Killick <contact@elliotkillick.com>

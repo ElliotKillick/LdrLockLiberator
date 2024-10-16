@@ -1,3 +1,6 @@
+// Copyright (C) 2023 Elliot Killick <contact@elliotkillick.com>
+// Licensed under the MIT License. See LICENSE file for details.
+
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <winternl.h> // For NTSTATUS
@@ -91,7 +94,7 @@ PCRITICAL_SECTION getLdrpLoaderLockAddress(VOID) {
     INT32 rel32EncodedAddress = *(PINT32)(ldrUnlockLoaderLockSearchCounter + sizeof(callAddressOpcode));
 
     // Reverse engineering Native API function: LdrpReleaseLoaderLock
-    // First argument: For output only, it returns a pointer (pointing to USER_SHARED_DATA, a read-only section used by the kernel) to a byte
+    // First argument: For output only, it returns a pointer (pointing to KUSER_SHARED_DATA, a read-only section used by the kernel) to a byte
     //   - The value of this byte should be zero under normal circumstances, otherwise the code jumps to some error-handling (the program may recover and jump back to the LdrpReleaseLoaderLock code or terminate)
     // Second argument: Unused (Exists in API for compatibility with previous/different Windows version? Reserved for future use?)
     // Third argument: Jump to error-handling code if it's a negative value
@@ -262,7 +265,9 @@ VOID LdrFullUnlock(VOID) {
     // ntdll!LdrpWorkInProgress must be ZERO while libraries are loading in the newly spawned thread (requires further research)
     // For this reason, we must preload the libraries loaded by ShellExecute
     // Perform this operation atomically with InterlockedDecrement to maintain thread safety (I'm not sure this is necessary given that the NTDLL code isn't doing it but we will be even safer than Microsoft here)
-    InterlockedDecrement64(LdrpWorkInProgress);
+    // NOTE: SAFELY MODIFYING the LdrpWorkInProgress state mandates acquring the LdrpWorkQueueLock. I will leave this as an exercise to the reader.
+    // Technically, loading a library at process startup means you can get away safely without acquiring the LdrpWorkQueueLock lock here
+    LdrpWorkInProgress = 0;
 
     //
     // Run our payload!
@@ -285,7 +290,9 @@ VOID LdrFullUnlock(VOID) {
     // Must set ntdll!LdrpWorkInProgress back to NON-ZERO otherwise we crash/deadlock in NTDLL library loader code sometime after returning from DllMain
     // The crash/deadlock occurs to due to concurrent operations happening in other threads
     // The problem arises due to ntdll!TppWorkerThread threads by default (https://devblogs.microsoft.com/oldnewthing/20191115-00/?p=103102)
-    InterlockedAdd64(LdrpWorkInProgress, 1);
+    // NOTE: SAFELY MODIFYING the LdrpWorkInProgress state mandates acquring the LdrpWorkQueueLock. I will leave this as an exercise to the reader. Alternatively, exit the process.
+    // There is a real chance of crashing here without acquiring the LdrpWorkQueueLock here now that other, potentialy load owner threads, are operating inside the process. Continue without acquiring the LdrpWorkQueueLock at your own risk.
+    LdrpWorkInProgress = 1;
     // Reset these events to how they were to be safe (although it doesn't appear to be necessary at least in our case)
     modifyLdrEvents(FALSE, events, eventsCount);
     // Reacquire loader lock to be safe (although it doesn't appear to be necessary at least in our case)
@@ -563,6 +570,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDll, DWORD fdwReason, LPVOID lpvReserved)
         //LdrLockWinRace(lpvReserved);
         //LdrLockEscapeVehCatchException();
         //LdrLockDetonateNuclearOption();
+        break;
     }
 
     return TRUE;
