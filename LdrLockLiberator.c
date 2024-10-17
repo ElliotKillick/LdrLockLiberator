@@ -136,22 +136,6 @@ PCRITICAL_SECTION getLdrpLoaderLockAddress(VOID) {
     return LdrpLoaderLock;
 }
 
-VOID modifyLdrEvents(BOOL doSet, const HANDLE events[], const SIZE_T eventsSize) {
-    // Set event handles used by Windows loader (they are always these handle IDs)
-    // This is so we don't hang on WaitForSingleObject in the new thread (launched by ShellExecute) when it's loading more libraries
-    // Check the state of these event handles in WinDbg with this command: !handle 0 8 Event
-
-    // Signal and unsignal in reverse order to avoid ordering inversion issues
-    if (!doSet) {
-        for (SIZE_T i = 0; i < eventsSize; ++i)
-            ResetEvent(events[i]);
-    }
-    else {
-        for (SIZE_T i = eventsSize; i-- > 0;)
-            SetEvent(events[i]);
-    }
-}
-
 VOID preloadLibrariesForCurrentThread(VOID) {
     // These are all the libraries ShellExecute loads before launching a new thread
     // They must be manually loaded before calling ShellExecute because LdrpWorkInProgress must be set to TRUE for loading libraries on this thread but FALSE for loading libraries on the new thread
@@ -222,7 +206,7 @@ PULONG64 getLdrpWorkInProgressAddress() {
 }
 
 // List of all NTDLL loader events
-// Confirmed in WinDbg with this command: sxe ld:ntdll; bp ntdll!NtCreateEvent
+// Confirmed in WinDbg with these commands: sxe ld:ntdll; bp ntdll!NtCreateEvent; g
 // This stops the debugger on the first instruction in NTDLL and breaks on event creation
 // Look up the address returned in RCX after each NtCreateEvent to find its debug symbol name
 // https://doxygen.reactos.org/d4/deb/ntoskrnl_2ex_2event_8c.html#a6fff8045fa5834e03707df042e7c7cde
@@ -230,10 +214,58 @@ PULONG64 getLdrpWorkInProgressAddress() {
 // NOTE: These hex codes may change, they are simply created at process start in NTDLL with NtCreateEvent which decides on a handle ID value at run-time
 // However, the algorithm being used for generating these handle ID values seems to deterministically generate these values
 // To verify these handle IDs, simply look up the debug symbol names in WinDbg
-// If this breaks, then we can always search assembly code to find the handle IDs (feel free to contribute this code)
+// The correct handle IDs could always be obtained by searching the loader assembly code. I will leave this as an exercise to the reader.
 #define LdrpInitCompleteEvent (HANDLE)0x4
 #define LdrpLoadCompleteEvent (HANDLE)0x3c
 #define LdrpWorkCompleteEvent (HANDLE)0x40
+
+// Shared state within the Windows loader
+PULONG64 LdrpWorkInProgress;
+
+VOID myLdrpDropLastInProgressCount(VOID) {
+    // Incomplete clone of ntdll!LdrpDropLastInProgressCount Windows loader function
+
+    // TODO: Remove load owner flag from this thread (in the TEB). The current workaround is running the payload on a new thread or "preloading libraries".
+
+    // NOTE: SAFELY MODIFYING the LdrpWorkInProgress state mandates acquring the LdrpWorkQueueLock. I will leave this as an exercise to the reader.
+    // Technically, loading a library at process startup means you can get away safely without acquiring the LdrpWorkQueueLock lock here
+    // Begin: EnterCrticalSection(LdrpWorkQueueLock);
+    LdrpWorkInProgress = 0;
+    // End:   ReleaseCrticalSection(LdrpWorkQueueLock);
+
+    // Unlock load owner event
+    SetEvent(LdrpLoadCompleteEvent);
+}
+
+VOID myLdrpDrainWorkQueue(VOID) {
+    // Minimal clone of the LdrpDrainWorkQueue Windows loader function for our purposes to safely get back control of the loader after unlocking it
+
+    BOOL CompleteRetryOrReturn = FALSE
+
+    // Must set ntdll!LdrpWorkInProgress back to NON-ZERO otherwise we crash/deadlock in NTDLL library loader code sometime after returning from DllMain
+    // The crash/deadlock occurs to due to concurrent operations happening in other threads
+    // The problem arises due to loader worker threads by default (https://devblogs.microsoft.com/oldnewthing/20191115-00/?p=103102)
+    while (TRUE) {
+        // NOTE: SAFELY MODIFYING the LdrpWorkInProgress state mandates acquring the LdrpWorkQueueLock. I will leave this as an exercise to the reader. Alternatively, exit the process.
+        // There is a real chance of crashing here without acquiring the LdrpWorkQueueLock here now that other, potentialy load owner threads, are operating inside the process. Continue without acquiring the LdrpWorkQueueLock at your own risk.
+        // Begin: EnterCrticalSection(LdrpWorkQueueLock);
+        if (LdrpWorkInProgess == 0) {
+            LdrpWorkInProgress = 1;
+            CompleteRetryOrReturn = TRUE;
+        }
+        // End:   ReleaseCriticalSection(LdrpWorkQueueLock);
+
+        if (CompleteRetryOrReturn)
+            break;
+
+        // Reset these events to how they were for thread safety
+        // It's potentially unsafe to reset the LdrpInitCompleteEvent once new threads have been active in the process (because those new threads could be holding a lock while waiting for a new thread, a thread that will get blocked once LdrpInitCompleteEvent is reset)
+        // We don't bother helping to process the work like the real LdrpDrainWorkQueue function
+        WaitForSingleObject(LdrpLoadCompleteEvent);
+    }
+
+    // TODO: Set the load owner flag on this thread
+}
 
 #undef RUN_PAYLOAD_DIRECTLY_FROM_DLLMAIN
 
@@ -245,29 +277,33 @@ VOID LdrFullUnlock(VOID) {
     //
 
     const PCRITICAL_SECTION LdrpLoaderLock = getLdrpLoaderLockAddress();
-    const HANDLE events[] = { LdrpInitCompleteEvent, LdrpWorkCompleteEvent };
-    const SIZE_T eventsCount = sizeof(events) / sizeof(events[0]);
-    const PULONG64 LdrpWorkInProgress = getLdrpWorkInProgressAddress();
+    LdrpWorkInProgress = getLdrpWorkInProgressAddress();
 
     //
     // Preparation
     //
 
-    LeaveCriticalSection(LdrpLoaderLock);
-    // Preparation steps past this point are necessary if you will be creating new threads
-    // And other scenarios, generally I notice it's necessary whenever a payload indirectly calls: __delayLoadHelper2
+    // Please note that ALL the work we do here is still safer than what Microsoft does with the loader at every process exit:
+    // https://github.com/ElliotKillick/windows-vs-linux-loader-architecture#when-a-process-would-rather-terminate-than-wait-on-a-critical-section
+    // Unlocking the loader 100% safely is possible because the state is predictable. In contrast, the unpredictability of randomly sacrificing threads can never be safe.
+    // Please be safe Microsoft, it's dangerous out there and we don't want to see you deadlock or crash! :( Don't worry, as long as you are in this function with us: you are safe.
+
 #ifdef RUN_PAYLOAD_DIRECTLY_FROM_DLLMAIN
+    // The modern loader handles reentrancy correctly
     preloadLibrariesForCurrentThread();
 #endif
-    modifyLdrEvents(TRUE, events, eventsCount);
-    // This is so we don't hang in ntdll!ldrpDrainWorkQueue of the new thread (launched by ShellExecute) when it's loading more libraries
-    // ntdll!LdrpWorkInProgress must be NON-ZERO while libraries are being loaded in the current thread (requires further research)
-    // ntdll!LdrpWorkInProgress must be ZERO while libraries are loading in the newly spawned thread (requires further research)
-    // For this reason, we must preload the libraries loaded by ShellExecute
-    // Perform this operation atomically with InterlockedDecrement to maintain thread safety (I'm not sure this is necessary given that the NTDLL code isn't doing it but we will be even safer than Microsoft here)
-    // NOTE: SAFELY MODIFYING the LdrpWorkInProgress state mandates acquring the LdrpWorkQueueLock. I will leave this as an exercise to the reader.
-    // Technically, loading a library at process startup means you can get away safely without acquiring the LdrpWorkQueueLock lock here
-    LdrpWorkInProgress = 0;
+
+    // Leave module initialization/deinitialization lock
+    // NOTE: We unlock loader lock (a reentrant thread synchronization mechanism) once here, this doesn't account for the reentrant DllMain unlocking scenario. I leave this as an exercise to the reader. Make sure to re-lock loader lock the same number of times during cleanup.
+    LeaveCriticalSection(LdrpLoaderLock);
+    myLdrpDropLastInProgressCount();
+
+    // Complete loader initialization (this is the first thread creation blocker)
+    // This is only necessary in the process startup case; otherwise, it's a no-op and there's no harm in setting it again
+    // NOTE: Thread safety requires setting ntdll!LdrInitState = 3 before unlocking LdrpInitCompleteEvent. I've never seen a crash occur due to not changing this state, though. It's a rare but possible crash scenario. I leave this as an exercise for the reader.
+    // At process startup within DllMain, ntdll!LdrInitState = 2. So, everything works out great because the next time the loader sets ntdll!LdrInitState is to three, which is the final and thread-safe state.
+    // For details: https://github.com/ElliotKillick/windows-vs-linux-loader-architecture#windows-loader-initialization-locking-requirements
+    SetEvent(LdrpInitCompleteEvent);
 
     //
     // Run our payload!
@@ -275,6 +311,7 @@ VOID LdrFullUnlock(VOID) {
 
 #ifdef RUN_PAYLOAD_DIRECTLY_FROM_DLLMAIN
     // Libraries for this thread must be preloaded
+    // See the myLdrpDropLastInProgressCount function for info on same thread payload execution without "library preloading"
     payload();
 #else
     DWORD payloadThreadId;
@@ -287,16 +324,12 @@ VOID LdrFullUnlock(VOID) {
     // Cleanup
     //
 
-    // Must set ntdll!LdrpWorkInProgress back to NON-ZERO otherwise we crash/deadlock in NTDLL library loader code sometime after returning from DllMain
-    // The crash/deadlock occurs to due to concurrent operations happening in other threads
-    // The problem arises due to ntdll!TppWorkerThread threads by default (https://devblogs.microsoft.com/oldnewthing/20191115-00/?p=103102)
-    // NOTE: SAFELY MODIFYING the LdrpWorkInProgress state mandates acquring the LdrpWorkQueueLock. I will leave this as an exercise to the reader. Alternatively, exit the process.
-    // There is a real chance of crashing here without acquiring the LdrpWorkQueueLock here now that other, potentialy load owner threads, are operating inside the process. Continue without acquiring the LdrpWorkQueueLock at your own risk.
-    LdrpWorkInProgress = 1;
-    // Reset these events to how they were to be safe (although it doesn't appear to be necessary at least in our case)
-    modifyLdrEvents(FALSE, events, eventsCount);
-    // Reacquire loader lock to be safe (although it doesn't appear to be necessary at least in our case)
-    // Don't use the ntdll!LdrLockLoaderLock function to do this because it has the side effect of increasing ntdll!LdrpLoaderLockAcquisitionCount which we probably don't want
+    // Don't re-lock LdrpInitCompleteEvent because this library load may be happening outside of process startup
+    // If we're in process startup, then re-locking LdrpInitCompleteEvent doesn't matter, anyway (active threads with the potential of being a load owner have already been unleashed into the process)
+
+    // Configure loader shared state appropriately and reacquire LdrpLoadCompleteEvent
+    myLdrpDrainWorkQueue();
+    // Reacquire loader lock for thread safety
     EnterCriticalSection(LdrpLoaderLock);
 }
 
@@ -549,7 +582,7 @@ VOID LdrLockDetonateNuclearOption(VOID) {
     VirtualProtect(codeSection, mbi.RegionSize, oldProtect, &oldProtect);
 }
 
-#undef I_PLEDGE_TO_NOT_USE_THIS_RUBE_GOLDBERG_MACHINE_IN_PRODUCTION_CODE
+#undef I_PLEDGE_NOT_TO_UNLOCK_THE_LOADER_IN_MY_PRODUCTION_APP
 // Please sign: [YOUR NAME HERE]
 // Thank you for your cooperation!
 
@@ -563,7 +596,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDll, DWORD fdwReason, LPVOID lpvReserved)
         // Choose a technique:
         //
 
-#ifdef I_PLEDGE_TO_NOT_USE_THIS_RUBE_GOLDBERG_MACHINE_IN_PRODUCTION_CODE
+#ifdef I_PLEDGE_NOT_TO_UNLOCK_THE_LOADER_IN_MY_PRODUCTION_APP
         LdrFullUnlock();
 #endif
         LdrLockEscapeAtCrtExit(lpvReserved, hinstDll);
