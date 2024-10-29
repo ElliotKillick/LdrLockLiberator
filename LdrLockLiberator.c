@@ -49,7 +49,7 @@ EXTERN_C API VOID MpRemapCallistoDetections(VOID) EMPTY_IMPL;
 // Otherwise, ShellExecute goes directly to spawning the combase!CRpcThreadCache::RpcWorkerThreadEntry thread (among others)
 // See this occur as ShellExecute spawns threads in WinDbg: bp ntdll!LdrInitializeThunk
 // Investigating SHELL32.dll, this happens because SHELL32!CShellExecute::ExecuteNormal calls SHELL32!CShellExecute::_RunThreadMaybeWait (calc) instead of SHELL32!CShellExecute::_DoExecute (calc.exe) depending on the return value of CShellExecute::_ShouldCreateBackgroundThread
-// This fact matters for our debugging because, in the second case (calc.exe), we don't get past the initial combase!CComApartment::StartServer -- (other functions) --> NdrCallClient2 deadlocked call stack unless we, as well as unlocking loader lock, also set the LdrpLoadCompleteEvent and LdrpInitCompleteEvent loader events, and set ntdll!LdrpWorkInProgess to zero
+// This fact matters for our debugging because, in the second case (calc.exe), we don't get past the initial combase!CComApartment::StartServer -- (other functions) --> NdrCallClient2 deadlocked call stack unless we, as well as unlocking loader lock, also set the LdrpLoadCompleteEvent and LdrpInitCompleteEvent loader events, and set ntdll!LdrpWorkInProgress to zero
 // Why? This requires investigating the target process of this NdrClientCall2 RPC call. Guess: csrss.exe (https://en.wikipedia.org/wiki/Client/Server_Runtime_Subsystem)
 
 VOID payload(VOID) {
@@ -230,7 +230,7 @@ VOID myLdrpDropLastInProgressCount(VOID) {
     // NOTE: SAFELY MODIFYING the LdrpWorkInProgress state mandates acquring the LdrpWorkQueueLock. I will leave this as an exercise to the reader.
     // Technically, loading a library at process startup means you can get away safely without acquiring the LdrpWorkQueueLock lock here
     // Begin: EnterCrticalSection(LdrpWorkQueueLock);
-    LdrpWorkInProgress = 0;
+    *LdrpWorkInProgress = 0;
     // End:   ReleaseCrticalSection(LdrpWorkQueueLock);
 
     // Unlock load owner event
@@ -249,8 +249,8 @@ VOID myLdrpDrainWorkQueue(VOID) {
         // NOTE: SAFELY MODIFYING the LdrpWorkInProgress state mandates acquring the LdrpWorkQueueLock. I will leave this as an exercise to the reader. Alternatively, exit the process.
         // There is a real chance of crashing here without acquiring the LdrpWorkQueueLock here now that other, potentialy load owner threads, are operating inside the process. Continue without acquiring the LdrpWorkQueueLock at your own risk.
         // Begin: EnterCrticalSection(LdrpWorkQueueLock);
-        if (LdrpWorkInProgess == 0) {
-            LdrpWorkInProgress = 1;
+        if (*LdrpWorkInProgress == 0) {
+            *LdrpWorkInProgress = 1;
             CompleteRetryOrReturn = TRUE;
         }
         // End:   ReleaseCriticalSection(LdrpWorkQueueLock);
@@ -285,8 +285,9 @@ VOID LdrFullUnlock(VOID) {
 
     // Please note that ALL the work we do here is still safer than what Microsoft does with the loader at every process exit:
     // https://github.com/ElliotKillick/windows-vs-linux-loader-architecture#when-a-process-would-rather-terminate-than-wait-on-a-critical-section
-    // Unlocking the loader 100% safely is possible because the state is predictable. In contrast, the unpredictability of randomly sacrificing threads can never be safe.
+    // Unlocking the loader 100% safely is possible because the state is predictable (at least when Windows isn't doing non-sensical delay loading or other random loads, but that's not my bug). In contrast, the unpredictability of randomly sacrificing threads can never be safe.
     // Please be safe Microsoft, it's dangerous out there and we don't want to see you deadlock or crash! :( Don't worry, as long as you are in this function with us: you are safe.
+    // The goal is to keep our code as far away from this thing as possible: NtTerminateProcess
 
 #ifdef RUN_PAYLOAD_DIRECTLY_FROM_DLLMAIN
     // The modern loader handles reentrancy correctly
